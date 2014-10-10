@@ -10,6 +10,14 @@
  * @date 2014-09-23
  */
 
+// ROOT
+#include "TFile.h"
+#include "TTree.h"
+#include "TH1D.h"
+#include "TF1.h"
+#include "THashList.h"
+
+// STL
 #include <vector>
 #include <utility>
 #include <map>
@@ -25,22 +33,30 @@ using std::map;
 using std::string;
 using std::ifstream;
 using std::ostream;
+using std::to_string;
 
 namespace SETeff {
 
     enum EffFunType { p3_20, p5_200, p5_20}; ///< Fitting function switch.
     enum EffDist { SET, SEToverPT }; ///< Fitting distribution switch.
 
+    // typedefs
+    typedef size_t                       ParSetIdentifier;
+    typedef map<ParSetIdentifier,double> EffScales;
+    typedef pair<int,int>                EventIdentifier;
+    typedef map<EventIdentifier,double>  ZBmap;
+
     // utilities
     string ToString(EffFunType in); ///< stringify 
     string ToString(EffDist in);
     string ToString(const vector<double> &data);
+    string ToString(size_t i);
+    string ToString(double a);
     void ToLowcase(string &s);
     bool StartWithNoCase(string s1,string s2);
     string GetParNameByIndices( size_t i_pt, size_t i_eta, size_t i_lumi, size_t i_upar, size_t i_ut );
     vector<string> SplitString(string &source,bool keepEmpty=false);
     size_t NextWhitespace(string &source, size_t prev);
-
     void ConvertDumpToTree_fullMC (string text_dump, string root_dump);
     void ConvertDumpToTree_PMCS   (string text_dump, string root_dump);
 
@@ -49,6 +65,8 @@ namespace SETeff {
     double fun_p5_200 ( double* x, double* par);
     double fun_p5_20  ( double* x, double* par);
 
+    // classes
+    class EffHandler;
 
     /** 
      * @class EffBins
@@ -68,88 +86,29 @@ namespace SETeff {
         public vector<double>
     {
         public :
-            EffBins(): vector<double>() {
+            EffBins(const char * _title="x"): vector<double>(), title(_title) {
                 push_back(0.);
                 push_back(1.);
             }
             ~EffBins(){};
 
             /// Setters
-            void SetByVector(vector<double> &vec){
-                if(vec.size()==0){
-                    clear();
-                    push_back(0.);
-                    push_back(1.);
-                }
-                else if(vec.size()==1){
-                    clear();
-                    push_back(vec[0]-1);
-                    push_back(vec[0]);
-                    push_back(vec[0]+1);
-                }
-                else vector<double>::operator=(vec);
-            }
-
-            void SetByArray(size_t nbins, double* list){
-                clear();
-                for (size_t i=0; i<=nbins; i++){
-                    push_back(list[i]);
-                }
-            }
-
-            void SetByRange(size_t nbins=0, double low=0., double high=0.){
-                clear();
-                if (nbins==0){ // one bin counter
-                    push_back(0.);
-                    push_back(1.);
-                }
-                if (nbins==1){// +-
-                    push_back(low-1.);
-                    push_back(low);
-                    push_back(low+1.);
-                }
-                if (nbins>1){// bins including over and underflow
-                    clear();
-                    double step = (high-low)/nbins;
-                    for(size_t i=0;i<=nbins;i++) push_back(low+step*i);
-                }
-            }
+            void SetByVector(vector<double> &vec);
+            void SetByArray(size_t nbins, double* list);
+            void SetByRange(size_t nbins=0, double low=0., double high=0.);
 
             /// Getters
-            size_t GetNBins() const{
-                if (size()==0) return 1;
-                return size()-1;
-            }
-            double * GetBinArray(){ return & (*begin());}
-
-            double Val(double in){ // test for overflow, underflow
-                if (size()==0.) return 0.;
-                if (in < Underflow() ) return Underflow();
-                if (in > Overflow()  ) return Overflow();
-                return in;
-            }
-
-            size_t GetBin(double in){
-                size_t i = 1;
-                for (; i<size(); i++){
-                    if (in<at(i)) return i-1;
-                }
-                return i;
-            }
-
-            double Underflow() {return *( begin() );} // lowest accepted value
-            double Overflow()  {return *( end()-1 );} // highghest accepted value
-
+            size_t GetNBins() const;
+            double * GetBinArray();
+            double Val(double in);
+            size_t GetBin(double in) const;
+            double Underflow() ; // lowest accepted value
+            double Overflow()  ; // highghest accepted value
+            string GetTitle() const { return title;};
+        private :
+            string title;
     };
 
-    struct ParSetIndices {
-        size_t i_pt   = 0;
-        size_t i_eta  = 0;
-        size_t i_lumi = 0;
-        size_t i_upar = 0;
-        size_t i_ut   = 0;
-    };
-    typedef size_t ParSetIdentifier;
     class EffParams:
         public map<ParSetIdentifier,vector<double> >
     {
@@ -158,26 +117,20 @@ namespace SETeff {
             ~EffParams(){};
 
             ///Setters
-            void SetBinnings( EffBins * _b_pt, EffBins * _b_eta, EffBins * _b_lumi, EffBins * _b_upar, EffBins * _b_ut);
+            inline void SetHandler(EffHandler * _h) {handler = _h;};
+            void SetParams(TF1 * fun, ParSetIdentifier i);
             void SetParams(vector<double> &vec, double pt, double eta, double lumi, double upar, double ut);
             void SetParams(vector<double> &vec, size_t i_pt, size_t i_eta, size_t i_lumi, size_t i_upar, size_t i_ut);
 
             ///Getters
-            void GetIndices(const ParSetIdentifier i, size_t &i_pt, size_t &i_eta, size_t &i_lumi, size_t &i_upar, size_t &i_ut);
-            ParSetIdentifier GetIndex(size_t i_pt, size_t i_eta, size_t i_lumi, size_t i_upar, size_t i_ut) const;
-            ParSetIdentifier GetIndex(double pt, double eta, double lumi, double upar, double ut) const;
             double * GetParArray(size_t i_pt, size_t i_eta, size_t i_lumi, size_t i_upar, size_t i_ut);
             double * GetParArray(double pt, double eta, double lumi, double upar, double ut);
             vector<double> GetParVec(size_t i_pt, size_t i_eta, size_t i_lumi, size_t i_upar, size_t i_ut) const;
             vector<double> GetParVec(double pt, double eta, double lumi, double upar, double ut) const;
 
         private:
-            // binning pointers
-            EffBins *b_pt;
-            EffBins *b_eta;
-            EffBins *b_lumi;
-            EffBins *b_upar;
-            EffBins *b_ut;
+            // handler pointer
+            EffHandler * handler;
 
             double * GetParArray(ParSetIdentifier i);
             vector<double> GetParVec(ParSetIdentifier i) const;
@@ -196,24 +149,25 @@ namespace SETeff {
             vector<double> GetVecDouble(string name);
             friend ostream& operator<< (ostream& os, const ConfigFile& in);
 
-        protected :
             // config
             EffFunType fun_type;
             EffDist dist_type;
-
             // fit dist bins
             EffBins bins_SET;
             EffBins bins_SEToverPT;
-
             // fit dependency bins
             EffBins bins_pt;
             EffBins bins_eta;
             EffBins bins_lumi;
             EffBins bins_upar;
             EffBins bins_ut;
-
             // container of parameter values
             EffParams fit_pars;
+            EffScales fit_scales;
+
+        protected :
+            // parent
+            EffHandler * handler;
 
         private :
             // read helpers;
@@ -233,9 +187,35 @@ namespace SETeff {
             size_t next_delim(string &source, size_t prev);
     };
 
+    class TreeDump {
+        public :
+            TreeDump();
+            ~TreeDump();
 
-    typedef pair<int,int> EventIdentifier;
-    typedef map<EventIdentifier,double> ZBmap;
+            void LoadTree(string path, bool isPMCS=false);
+            Long64_t GetEntries() const;
+            void GetEntry(Long64_t i);
+
+            int    run          ;
+            int    evt          ;
+            int    lumblk       ;
+            double lumi         ;
+            double scalaret     ;
+            double scalaretZB   ;
+            double scalaretMB   ;
+            double scalaretHard ;
+            double elepT        ;
+            double deteta       ;
+            double eta          ;
+            double upara        ;
+            double ut           ;
+
+        private :
+            TFile *f;
+            TTree *t;
+    };
+
+
     class ParameterEstimator {
         public :
             ParameterEstimator();
@@ -246,46 +226,72 @@ namespace SETeff {
             void LoadPMCS   (string path);
 
             virtual void EstimateParameters();
-            void MakeEfficiencies();
             void SaveStudy(string outfile);
 
+            void OldOutput(ostream &os);
+
+            bool UseFullSET = true;
+            bool UsePhysEta = false;
+
         protected :
-            ConfigFile * config;
-            EffBins * b_pt   ;
-            EffBins * b_eta  ;
-            EffBins * b_lumi ;
-            EffBins * b_upar ;
-            EffBins * b_ut   ;
+            // parent
+            EffHandler * handler;
 
-            ZBmap   m_zblib;
-            //TTree * t_fullMC;
-            //TTree * t_PMCS;
+            ZBmap    m_zblib;
+            TreeDump t_fullMC;
+            TreeDump t_PMCS;
 
-            //THashList hists;
+            EffScales m_finalScale;
+            EffScales m_finalScaleMax;
+            EffScales m_finalScaleMaxGlobal;
+
+            EffScales m_modintegral;
+            EffScales m_globalnorm;
+
+            THashList l_hists;
+            //THashList l_fitfuns;
+
+            void BookHistogramsAndScales();
+            void BookHist ( ParSetIdentifier i, string base , EffBins * binning );
+            void BookFunction( ParSetIdentifier i);
+            void FillHistograms();
+            void FillStdHist(string base, double SET, double pt, double eta, double lumi, double upar, double ut);
+            TH1D * GetHistogram(ParSetIdentifier i, string base_name);
+            TF1  * GetFunction (ParSetIdentifier i);
+            void MakeEfficiencies();
+            void FitEfficiencies();
+            void CalculateScales();
+            void make_scaled_ratio(TH1D * A, TH1D *B, TH1D * C, double scale = 1.);
+            bool isOkBins(size_t i_pt, size_t i_eta);
+            double ModIntegral(ParSetIdentifier i);
+            double GlobalNorm(ParSetIdentifier i);
+
+            string get_list_name(ParSetIdentifier, string base_name="", string out="o_");
     };
 
 
 
     /**
-     * Description of class.
+     * Wrapping class over all operations with SET efficiencies.
      *
-     * Longer description of class
+     * Collecting configuration, estimating parameters and efficiency evaulation.
      */
     class EffHandler : public ConfigFile, public ParameterEstimator {
         public:
-            EffHandler() {};
+            EffHandler() {ConfigFile::handler = this; ParameterEstimator::handler = this; };
             ~EffHandler(){};
 
-            double GetEfficiency(double SET, double elpt=0, double eta=0, double lumi=0, double upar=0, double ut=0);
-            void SetMissingParamsToOne();
+            void SetMissingParamsToOne(); ///< Auto-fill missing entries.
             void SaveConfig(string filepath) ;
-            void EstimateParameters(){
-                ParameterEstimator::config = (ConfigFile *) this;
-                ParameterEstimator::EstimateParameters();
-            }
+
+            // Getters
+            double GetEfficiency(double SET, double elpt=0, double eta=0, double lumi=0, double upar=0, double ut=0);
+            void GetIndices(const ParSetIdentifier i, size_t &i_pt, size_t &i_eta, size_t &i_lumi, size_t &i_upar, size_t &i_ut);
+            ParSetIdentifier GetIndex(size_t i_pt, size_t i_eta, size_t i_lumi, size_t i_upar, size_t i_ut) const;
+            ParSetIdentifier GetIndex(double pt, double eta, double lumi, double upar, double ut) const;
+            ParSetIdentifier GetMaxIndex() const;
 
             void test_indeces(ostream &os);
-
     };
 
 }

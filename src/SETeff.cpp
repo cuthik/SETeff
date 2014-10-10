@@ -11,12 +11,19 @@
  */
 
 #include "SETeff.h"
+#include "ZBLibraryClass.h"
 
+
+// ROOT
+#include "TCollection.h"
+#include "TObject.h"
+
+// STL
 #include <stdexcept>
 #include <ctime>
 
 using std::runtime_error;
-using std::to_string;
+using std::invalid_argument;
 using std::stod;
 using std::transform;
 using std::ofstream;
@@ -52,6 +59,77 @@ namespace SETeff{
         outf.close();
     }
 
+    void EffHandler::GetIndices(const ParSetIdentifier i, size_t &i_pt, size_t &i_eta, size_t &i_lumi, size_t &i_upar, size_t &i_ut){
+        ParSetIdentifier index = i;
+        int base = 1;
+        // get max
+        size_t N_pt   = bins_pt   .GetNBins();
+        size_t N_eta  = bins_eta  .GetNBins();
+        size_t N_lumi = bins_lumi .GetNBins();
+        size_t N_upar = bins_upar .GetNBins();
+        size_t N_ut   = bins_ut   .GetNBins();
+        // set base
+        base *= N_pt   ;
+        base *= N_eta  ;
+        base *= N_lumi ;
+        base *= N_upar ;
+        base *= N_ut   ;
+        //decompose number
+        index %= base ; base /= N_ut   ; i_ut   = index/base;
+        index %= base ; base /= N_upar ; i_upar = index/base;
+        index %= base ; base /= N_lumi ; i_lumi = index/base;
+        index %= base ; base /= N_eta  ; i_eta  = index/base;
+        index %= base ; base /= N_pt   ; i_pt   = index/base;
+    }
+
+    ParSetIdentifier EffHandler::GetIndex(size_t i_pt, size_t i_eta, size_t i_lumi, size_t i_upar, size_t i_ut) const{
+        ParSetIdentifier index = 0;
+        int base = 1;
+        index+= i_pt   * base; base *= bins_pt   .GetNBins();
+        index+= i_eta  * base; base *= bins_eta  .GetNBins();
+        index+= i_lumi * base; base *= bins_lumi .GetNBins();
+        index+= i_upar * base; base *= bins_upar .GetNBins();
+        index+= i_ut   * base; base *= bins_ut   .GetNBins();
+        return index;
+    }
+
+    ParSetIdentifier EffHandler::GetIndex(double pt, double eta, double lumi, double upar, double ut) const{
+        return GetIndex(
+                bins_pt   .GetBin( pt   ) ,
+                bins_eta  .GetBin( eta  ) ,
+                bins_lumi .GetBin( lumi ) ,
+                bins_upar .GetBin( upar ) ,
+                bins_ut   .GetBin( ut   ) 
+                );
+    }
+
+    ParSetIdentifier EffHandler::GetMaxIndex() const{
+        int base = 1;
+        base *= bins_pt   .GetNBins();
+        base *= bins_eta  .GetNBins();
+        base *= bins_lumi .GetNBins();
+        base *= bins_upar .GetNBins();
+        base *= bins_ut   .GetNBins();
+        return base;
+    }
+
+    void EffHandler::SetMissingParamsToOne(){
+        vector<double> par_vec (5,1.);
+        for (size_t i_pt   =0; i_pt   < bins_pt   .GetNBins(); i_pt   ++ ){
+        for (size_t i_eta  =0; i_eta  < bins_eta  .GetNBins(); i_eta  ++ ){
+        for (size_t i_lumi =0; i_lumi < bins_lumi .GetNBins(); i_lumi ++ ){
+        for (size_t i_upar =0; i_upar < bins_upar .GetNBins(); i_upar ++ ){
+        for (size_t i_ut   =0; i_ut   < bins_ut   .GetNBins(); i_ut   ++ ){
+            try {
+                fit_pars.GetParArray( i_pt   , i_eta  , i_lumi , i_upar , i_ut   ); // if there is no entry it will throw runtime_error
+            }
+            catch (runtime_error &e){
+                // add missing vector
+                fit_pars.SetParams( par_vec,  i_pt   , i_eta  , i_lumi , i_upar , i_ut   );
+            }
+        } } } } } 
+    }
+
     void EffHandler::test_indeces(ostream &os){
                 size_t N_pt   = 1;
                 size_t N_eta  = 0;
@@ -64,7 +142,7 @@ namespace SETeff{
                     N_lumi  <<  " " <<
                     N_upar  <<  " " <<
                     N_ut    << "\n";
-                ParSetIdentifier i = fit_pars.GetIndex(
+                ParSetIdentifier i = GetIndex(
                         N_pt   ,
                         N_eta  ,
                         N_lumi ,
@@ -83,12 +161,12 @@ namespace SETeff{
                     N_lumi  <<  " " <<
                     N_upar  <<  " " <<
                     N_ut    << "\n";
-                fit_pars.GetIndices(i,
+                GetIndices(i,
                         N_pt   ,
                         N_eta  ,
                         N_lumi ,
                         N_upar ,
-                        N_ut   
+                        N_ut
                         );
                 os << 
                     N_pt    <<  " " <<
@@ -98,11 +176,88 @@ namespace SETeff{
                     N_ut    << "\n";
             }
 
+    /// Binning
+
+
+    void EffBins::SetByVector(vector<double> &vec){
+        if(vec.size()==0){
+            clear();
+            push_back(0.);
+            push_back(1.);
+        }
+        else if(vec.size()==1){
+            clear();
+            push_back(vec[0]-1);
+            push_back(vec[0]);
+            push_back(vec[0]+1);
+        }
+        else vector<double>::operator=(vec);
+    }
+
+    void EffBins::SetByArray(size_t nbins, double* list){
+        clear();
+        for (size_t i=0; i<=nbins; i++){
+            push_back(list[i]);
+        }
+    }
+
+    void EffBins::SetByRange(size_t nbins, double low, double high){
+        clear();
+        if (nbins==0){ // one bin counter
+            push_back(0.);
+            push_back(1.);
+        }
+        if (nbins==1){// +-
+            push_back(low-1.);
+            push_back(low);
+            push_back(low+1.);
+        }
+        if (nbins>1){// bins including over and underflow
+            clear();
+            double step = (high-low)/nbins;
+            for(size_t i=0;i<=nbins;i++) push_back(low+step*i);
+        }
+    }
+
+    /// Getters
+    size_t EffBins::GetNBins() const{
+        if (size()==0) return 1;
+        return size()-1;
+    }
+    double * EffBins::GetBinArray(){ return & (*begin());}
+
+    double EffBins::Val(double in){ // test for overflow, underflow
+        if (size()==0.) return 0.;
+        if (in < Underflow() ) return Underflow();
+        if (in > Overflow()  ) return Overflow();
+        return in;
+    }
+
+    size_t EffBins::GetBin(double in) const{
+        //if (size()==2) return 0;
+        size_t i = 1;
+        for (; i<size(); i++){
+            if (in<at(i)) return i-1;
+        }
+        return i-2;
+    }
+
+    double EffBins::Underflow() {return *( begin() );} // lowest accepted value
+    double EffBins::Overflow()  {return *( end()-1 );} // highghest accepted value
+
+
     /// Config file
 
     ConfigFile::ConfigFile() :
         fun_type  (SETeff::p3_20),
-        dist_type (SETeff::SET)
+        dist_type (SETeff::SET),
+        bins_SET       ( "SET[GeV]"       ),
+        bins_SEToverPT ( "SET / p_{T}"    ),
+        bins_pt        ( "el p_{T}[GeV]"  ),
+        bins_eta       ( "el #eta"        ),
+        bins_lumi      ( "lumi[#mub]"     ),
+        bins_upar      ( "u_{par}[GeV]"   ),
+        bins_ut        ( "u_{T}[GeV]"     )
     {
     }
 
@@ -124,23 +279,6 @@ namespace SETeff{
         config_fit_pars();
         // close file
         close();
-    }
-
-    void EffHandler::SetMissingParamsToOne(){
-        vector<double> par_vec (5,1.);
-        for (size_t i_pt   =0; i_pt   < bins_pt   .GetNBins(); i_pt   ++ ){
-        for (size_t i_eta  =0; i_eta  < bins_eta  .GetNBins(); i_eta  ++ ){
-        for (size_t i_lumi =0; i_lumi < bins_lumi .GetNBins(); i_lumi ++ ){
-        for (size_t i_upar =0; i_upar < bins_upar .GetNBins(); i_upar ++ ){
-        for (size_t i_ut   =0; i_ut   < bins_ut   .GetNBins(); i_ut   ++ ){
-            try {
-                fit_pars.GetParArray( i_pt   , i_eta  , i_lumi , i_upar , i_ut   ); // if there is no entry it will throw runtime_error
-            }
-            catch (runtime_error &e){
-                // add missing vector
-                fit_pars.SetParams( par_vec,  i_pt   , i_eta  , i_lumi , i_upar , i_ut   );
-            }
-        } } } } } 
     }
 
     void ConfigFile::open(string conf_filename){
@@ -182,21 +320,17 @@ namespace SETeff{
 
     void ConfigFile::config_fit_pars(){
         // assuming all config was already done
-        fit_pars.SetBinnings( & bins_pt  , & bins_eta , & bins_lumi, & bins_upar, & bins_ut  );
+        fit_pars.SetHandler( handler );
         // loop all posible bins where parameters are estimated -- this is estimated from binning definition
         for (size_t i_pt   =0; i_pt   < bins_pt   .GetNBins(); i_pt   ++ ){
         for (size_t i_eta  =0; i_eta  < bins_eta  .GetNBins(); i_eta  ++ ){
         for (size_t i_lumi =0; i_lumi < bins_lumi .GetNBins(); i_lumi ++ ){
         for (size_t i_upar =0; i_upar < bins_upar .GetNBins(); i_upar ++ ){
         for (size_t i_ut   =0; i_ut   < bins_ut   .GetNBins(); i_ut   ++ ){
-                            string par_name = GetParNameByIndices( i_pt   , i_eta  , i_lumi , i_upar , i_ut   );
-                            vector<double> par_vec = GetVecDouble(par_name);
-                            fit_pars.SetParams(par_vec,  i_pt   , i_eta  , i_lumi , i_upar , i_ut   );
-                        }
-                    }
-                }
-            }
-        }
+            string par_name = GetParNameByIndices( i_pt   , i_eta  , i_lumi , i_upar , i_ut   );
+            vector<double> par_vec = GetVecDouble(par_name);
+            fit_pars.SetParams(par_vec,  i_pt   , i_eta  , i_lumi , i_upar , i_ut   );
+        } } } } }
     }
 
 
@@ -219,6 +353,35 @@ namespace SETeff{
             out.push_back(stod(*it));
         }
         return out;
+    }
+
+    void ParameterEstimator::OldOutput(ostream &os){
+        os<<"==============================================================================================="<<"\n";
+        os<<"WSETEffCorrPTEpert:     3"<<"\n";
+        // fix bins
+        size_t i_lumi=0;
+        size_t i_upar=0;
+        size_t i_ut=0;
+        // loop bins
+        for ( size_t i_eta = 0; i_eta < handler->bins_eta.GetNBins(); i_eta ++){
+            os<<"WSETEffCorrPTEpertBase_"<<i_eta<<": 0. 0. 0. 0. 0."<<"\n";
+            for ( size_t i_pt  = 0; i_pt  < handler->bins_pt.GetNBins(); i_pt  ++){
+                ParSetIdentifier i = handler -> GetIndex(i_pt,i_eta,i_lumi,i_upar,i_ut);
+                char b='A';
+                b+=(char)i_pt;
+                os<<"WSETEffCorrPTEpert"<<b<<"_"<<i_eta<<":    ";
+                os << ToString(handler->fit_pars[i]) << "\n";
+            }
+            os<<"WSETEffCorrPTEpertNorm_"<<i_eta<<":  ";
+            for ( size_t i_pt  = 0; i_pt  < handler->bins_pt.GetNBins(); i_pt  ++){
+                ParSetIdentifier i              = handler -> GetIndex( i_pt, i_eta, i_lumi, i_upar, i_ut);
+                ParSetIdentifier i_allpt_alleta = handler -> GetIndex( 0,    0,     i_lumi, i_upar, i_ut);
+                os<< m_finalScale[i] / m_finalScaleMaxGlobal[i_allpt_alleta];
+                if (i_pt<7) os<<"  ";
+                else os<<"\n";
+            }
+        }
+        os<<"==============================================================================================="<<"\n";
     }
 
     void ConfigFile::find_config(string config_name){ // read config file and find type of function
@@ -253,103 +416,24 @@ namespace SETeff{
     /// Parameter storage
 
     EffParams::EffParams() :
-        b_pt   ( 0 ),
-        b_eta  ( 0 ),
-        b_lumi ( 0 ),
-        b_upar ( 0 ),
-        b_ut   ( 0 )
+        handler   ( 0 )
     {
     };
 
-
-    void EffParams::SetBinnings( EffBins * _b_pt, EffBins * _b_eta, EffBins * _b_lumi, EffBins * _b_upar, EffBins * _b_ut){
-        b_pt   = _b_pt   ;
-        b_eta  = _b_eta  ;
-        b_lumi = _b_lumi ;
-        b_upar = _b_upar ;
-        b_ut   = _b_ut   ;
+    void EffParams::SetParams(TF1 * fun, ParSetIdentifier i){
+        vector<double> vec;
+        for (Int_t i=0; i < fun->GetNpar(); i++) vec.push_back(fun->GetParameter(i));
+        map<ParSetIdentifier,vector<double> >::operator[](i)=vec;
     }
 
     void EffParams::SetParams(vector<double> &vec, double pt, double eta, double lumi, double upar, double ut){
-        ParSetIdentifier i = GetIndex(pt,eta,lumi,upar,ut);
+        ParSetIdentifier i = handler->GetIndex(pt,eta,lumi,upar,ut);
         map<ParSetIdentifier,vector<double> >::operator[](i)=vec;
     }
 
     void EffParams::SetParams(vector<double> &vec, size_t i_pt, size_t i_eta, size_t i_lumi, size_t i_upar, size_t i_ut){
-        ParSetIdentifier i = GetIndex(i_pt,i_eta,i_lumi,i_upar,i_ut);
+        ParSetIdentifier i = handler->GetIndex(i_pt,i_eta,i_lumi,i_upar,i_ut);
         map<ParSetIdentifier,vector<double> >::operator[](i)=vec;
-    }
-
-    void EffParams::GetIndices(const ParSetIdentifier i, size_t &i_pt, size_t &i_eta, size_t &i_lumi, size_t &i_upar, size_t &i_ut){
-        ParSetIdentifier index = i;
-        int base = 1;
-        // get max
-        size_t N_pt   = b_pt   -> GetNBins();
-        size_t N_eta  = b_eta  -> GetNBins();
-        size_t N_lumi = b_lumi -> GetNBins();
-        size_t N_upar = b_upar -> GetNBins();
-        size_t N_ut   = b_ut   -> GetNBins();
-        // set base
-        base *= N_pt   ;
-        base *= N_eta  ;
-        base *= N_lumi ;
-        base *= N_upar ;
-        base *= N_ut   ;
-        //decompose number
-        index %= base ; base /= N_ut   ; i_ut   = index/base;
-        index %= base ; base /= N_upar ; i_upar = index/base;
-        index %= base ; base /= N_lumi ; i_lumi = index/base;
-        index %= base ; base /= N_eta  ; i_eta  = index/base;
-        index %= base ; base /= N_pt   ; i_pt   = index/base;
-
-
-        //base /= N_ut   ; i_ut   = index % base; index -= i_ut    * base;
-        //base /= N_upar ; i_upar = index % base; index -= i_upar  * base;
-        //base /= N_lumi ; i_lumi = index % base; index -= i_lumi  * base;
-        //base /= N_eta  ; i_eta  = index % base; index -= i_eta   * base;
-        //base /= N_pt   ; i_pt   = index % base; index -= i_pt    * base;
-
-       //printf "
-           //index  =%i
-           //base   =%i
-           //i_ut   =%i
-           //i_upar =%i
-           //i_lumi =%i
-           //i_eta  =%i
-           //i_pt   =%i
-           //",
-           //index  ,
-           //base   ,
-           //i_ut   ,
-           //i_upar ,
-           //i_lumi ,
-           //i_eta  ,
-           //i_pt   
-
-       //printf " index  =%i base   =%i i_ut   =%i i_upar =%i i_lumi =%i i_eta  =%i i_pt   =%i ", index  , base   , i_ut   , i_upar , i_lumi , i_eta  , i_pt   
-
-
-    }
-
-    ParSetIdentifier EffParams::GetIndex(size_t i_pt, size_t i_eta, size_t i_lumi, size_t i_upar, size_t i_ut) const{
-        ParSetIdentifier index = 0;
-        int base = 1;
-        index+= i_pt   * base; base *= b_pt   -> GetNBins();
-        index+= i_eta  * base; base *= b_eta  -> GetNBins();
-        index+= i_lumi * base; base *= b_lumi -> GetNBins();
-        index+= i_upar * base; base *= b_upar -> GetNBins();
-        index+= i_ut   * base; base *= b_ut   -> GetNBins();
-        return index;
-    }
-
-    ParSetIdentifier EffParams::GetIndex(double pt, double eta, double lumi, double upar, double ut) const{
-        return GetIndex(
-                b_pt   -> GetBin( pt   ) ,
-                b_eta  -> GetBin( eta  ) ,
-                b_lumi -> GetBin( lumi ) ,
-                b_upar -> GetBin( upar ) ,
-                b_ut   -> GetBin( ut   ) 
-                );
     }
 
     double * EffParams::GetParArray(ParSetIdentifier i){
@@ -358,11 +442,11 @@ namespace SETeff{
     }
 
     double * EffParams::GetParArray(size_t i_pt, size_t i_eta, size_t i_lumi, size_t i_upar, size_t i_ut){
-        return GetParArray(GetIndex(i_pt,i_eta,i_lumi,i_upar,i_ut));
+        return GetParArray(handler->GetIndex(i_pt,i_eta,i_lumi,i_upar,i_ut));
     }
 
     double * EffParams::GetParArray(double pt, double eta, double lumi, double upar, double ut){
-        return GetParArray(GetIndex(pt,eta,lumi,upar,ut));
+        return GetParArray(handler->GetIndex(pt,eta,lumi,upar,ut));
     }
 
     vector<double> EffParams::GetParVec(ParSetIdentifier i) const{
@@ -371,25 +455,77 @@ namespace SETeff{
     }
 
     vector<double> EffParams::GetParVec(size_t i_pt, size_t i_eta, size_t i_lumi, size_t i_upar, size_t i_ut) const{
-        return GetParVec(GetIndex(i_pt,i_eta,i_lumi,i_upar,i_ut));
+        return GetParVec(handler->GetIndex(i_pt,i_eta,i_lumi,i_upar,i_ut));
     }
 
     vector<double> EffParams::GetParVec(double pt, double eta, double lumi, double upar, double ut) const{
-        return GetParVec(GetIndex(pt,eta,lumi,upar,ut));
+        return GetParVec(handler->GetIndex(pt,eta,lumi,upar,ut));
     }
 
 
     void EffParams::test_key(ParSetIdentifier key) const{
         if (count(key)==0){
             string what = "Parameter map has no key ";
-            what.append(to_string(key));
+            what.append(ToString(key));
             throw runtime_error(what.c_str());
         }
         // if ( at(key).size() != 5){
         //     string what = "Parameter map has key with no items ";
-        //     what.append(to_string(key));
+        //     what.append(ToString(key));
         //     throw runtime_error(what.c_str());
         // }
+    }
+
+
+
+    /// Dump Tree
+    TreeDump::TreeDump() : 
+            run          (0),
+            evt          (0),
+            lumblk       (0),
+            lumi         (0),
+            scalaret     (0),
+            scalaretZB   (0),
+            scalaretMB   (0),
+            scalaretHard (0),
+            elepT        (0),
+            deteta       (0),
+            eta          (0),
+            upara        (0),
+            ut           (0)
+    {};
+
+    TreeDump::~TreeDump(){
+        if (f!=0 && f->IsOpen()) f->Close();
+    };
+
+    void TreeDump::LoadTree(string path, bool isPMCS){
+        f = TFile::Open (path.c_str(), "READ");
+        if (f==0) throw runtime_error(path.insert(0,"Can not open file ").c_str());
+        t = (TTree *) f->Get("dump");
+        if (t==0) throw runtime_error(path.insert(0,"Can not open tree `dump` in file ").c_str());
+        // load according to type of dump
+        if ( true    ) t->SetBranchAddress ( "run"          , &run          );
+        if ( true    ) t->SetBranchAddress ( "evt"          , &evt          );
+        if ( !isPMCS ) t->SetBranchAddress ( "lumblk"       , &lumblk       );
+        if ( true    ) t->SetBranchAddress ( "lumi"         , &lumi         );
+        if ( true    ) t->SetBranchAddress ( "scalaret"     , &scalaret     );
+        if ( isPMCS  ) t->SetBranchAddress ( "scalaretZB"   , &scalaretZB   );
+        if ( isPMCS  ) t->SetBranchAddress ( "scalaretMB"   , &scalaretMB   );
+        if ( isPMCS  ) t->SetBranchAddress ( "scalaretHard" , &scalaretHard );
+        if ( true    ) t->SetBranchAddress ( "elepT"        , &elepT        );
+        if ( true    ) t->SetBranchAddress ( "deteta"       , &deteta       );
+        if ( true    ) t->SetBranchAddress ( "eta"          , &eta          );
+        if ( true    ) t->SetBranchAddress ( "upara"        , &upara        );
+        if ( true    ) t->SetBranchAddress ( "ut"           , &ut           );
+    }
+
+    Long64_t TreeDump::GetEntries() const {
+        return t->GetEntries();
+    }
+
+    void TreeDump::GetEntry(Long64_t i){
+        t->GetEntry(i);
     }
 
     /// Parameter Estimator
@@ -401,34 +537,309 @@ namespace SETeff{
     }
 
     void ParameterEstimator::LoadZBlib  (string path){
+        if (UseFullSET) return;
+        BookHist(0,"SET_ZBlib", &handler->bins_SET);
+        TFile *f = new TFile(path.c_str());
+        TTree *zbtree = (TTree*)gDirectory->Get("binary_tuple");
+        if (zbtree->GetEntries() == 0) throw runtime_error("ZBtree has no entries.");
+        Int_t maxLZB = zbtree->GetEntries();
+        Double_t SET = 0;
+        ZBLibraryClass *zblibrary = new ZBLibraryClass(zbtree);
+        Int_t nLZB=0;
+        for (Int_t entryi=0; entryi < maxLZB; entryi++){
+            zblibrary->GetEntry(entryi);
+            SET = zblibrary->event_HKset;
+            EventIdentifier evtID(
+                    zblibrary->event_runNum,
+                    zblibrary->event_eventNum
+                    );
+            m_zblib.insert(pair<EventIdentifier,Float_t>(evtID,SET));
+            //SET = handler->bins_SET.Val(SET);
+            GetHistogram(0,"SET_ZBlib") -> Fill (SET);
+            nLZB++;
+        }
+        f->Close();
+        if (nLZB == 0) throw runtime_error("No events loaded from ZBtree.");
     }
 
     void ParameterEstimator::LoadFullMC (string path){
+        t_fullMC.LoadTree(path);
     }
 
     void ParameterEstimator::LoadPMCS   (string path){
+        t_PMCS.LoadTree(path,true);
     }
 
     void ParameterEstimator::EstimateParameters(){
         // the configuration file have to be loaded before
-        //BookHistograms();
-        //FillHistograms();
-        MakeEfficiencies();
-        //FitEfficiencies();
+        BookHistogramsAndScales(); // reserve all needed histograms and functions
+        FillHistograms(); // loop tree and fill histograms
+        MakeEfficiencies(); // from histograms create ratio histograms, calculate scales
+        FitEfficiencies();
+        CalculateScales();
+    }
+
+    void ParameterEstimator::BookHistogramsAndScales(){
+        size_t i_pt,i_eta,i_lumi,i_upar,i_ut    ;
+               i_pt=i_eta=i_lumi=i_upar=i_ut =-1;
+        // main binning
+        EffBins *                                    binning = & handler->bins_SET;
+        if (handler->dist_type == SETeff::SEToverPT) binning = & handler->bins_SEToverPT;
+        // for all indexes
+        for (ParSetIdentifier i = 0; i < handler->GetMaxIndex(); i++){
+            // main hist
+            BookHist(i, "full"  ,binning);
+            BookHist(i, "fast"  ,binning);
+            BookHist(i, "ratio" ,binning);
+            // main function
+            BookFunction(i);
+            // scales
+            m_finalScale[i]=-999.;
+            handler->GetIndices(i, i_pt,i_eta,i_lumi,i_upar,i_ut);
+            if (i_pt==0){
+                m_finalScaleMax[i] =-999.;
+                BookHist(i,"full_allpt", & handler->bins_SET );
+                BookHist(i,"fast_allpt", & handler->bins_SET );
+            }
+            if (i_pt==0&&i_eta==0){
+                m_finalScaleMaxGlobal[i]=-999.;
+            }
+        }
+    }
+
+    void ParameterEstimator::BookHist ( ParSetIdentifier i, string base , EffBins * binning ){
+        string name = get_list_name ( i, base, "h_");
+        if ( l_hists(name.c_str()) != 0) throw invalid_argument(name.insert(0,"trying to book already existing histogram: ").c_str());
+        string title = name;
+        title.append(";");
+        title.append(binning->GetTitle());
+        title.append(";entries");
+        TH1D * h = new TH1D ( name.c_str(), title.c_str(), binning->GetNBins(), binning->GetBinArray() );
+        l_hists.Add(h);
+    }
+
+    void ParameterEstimator::BookFunction(ParSetIdentifier i){
+        string name = get_list_name(i,"","f_");
+        TF1 * fcn = 0;
+        switch (handler->fun_type){
+            case SETeff::p3_20  : fcn = new TF1( name.c_str(), SETeff::fun_p3_20  , 0, 250, 3 ) ; break ;
+            case SETeff::p5_200 : fcn = new TF1( name.c_str(), SETeff::fun_p5_200 , 0, 250, 5 ) ; break ;
+            case SETeff::p5_20  : fcn = new TF1( name.c_str(), SETeff::fun_p5_20  , 0, 250, 5 ) ; break ;
+        }
+        l_hists.Add( fcn );
+    }
+
+    void ParameterEstimator::FillHistograms(){
+        double SET  = 0;
+        double pt   = 0;
+        double eta  = 0;
+        double lumi = 0;
+        double upar = 0;
+        double ut   = 0;
+        /// loop fullMC
+        for (Long64_t i_entry=0; i_entry < t_fullMC.GetEntries(); i_entry++){
+            t_fullMC.GetEntry(i_entry);
+            if (UseFullSET) SET  = t_fullMC.scalaret ;
+            else {
+                EventIdentifier evID(t_fullMC.run, t_fullMC.evt);
+                ZBmap::iterator it=m_zblib.find(evID);
+                if (it==m_zblib.end()) throw runtime_error("not in library!");
+                else SET=it->second;
+            }
+            if (UsePhysEta) eta = t_fullMC.eta    ;
+            else            eta = t_fullMC.deteta ;
+            eta = fabs(eta);
+            pt   = t_fullMC.elepT    ;
+            lumi = t_fullMC.lumi     ;
+            upar = t_fullMC.upara    ;
+            ut   = t_fullMC.ut       ;
+            FillStdHist("full", SET, pt, eta, lumi, upar, ut);
+            ParSetIdentifier i=handler->GetIndex(-999.,eta,lumi,upar,ut);
+            GetHistogram(i,"full_allpt") -> Fill(SET);
+        }
+        /// loop PMCS
+        for (Long64_t i_entry=0; i_entry < t_PMCS.GetEntries(); i_entry++){
+            t_PMCS.GetEntry(i_entry);
+            if (UseFullSET) SET  = t_PMCS.scalaret ;
+            else {
+                EventIdentifier evID(t_PMCS.run, t_PMCS.evt);
+                ZBmap::iterator it=m_zblib.find(evID);
+                if (it==m_zblib.end()) throw runtime_error("not in library!");
+                else SET=it->second;
+            }
+            if (UsePhysEta) eta = t_PMCS.eta    ;
+            else            eta = t_PMCS.deteta ;
+            eta = fabs(eta);
+            pt   = t_PMCS.elepT    ;
+            lumi = t_PMCS.lumi     ;
+            upar = t_PMCS.upara    ;
+            ut   = t_PMCS.ut       ;
+            FillStdHist("fast", SET, pt, eta, lumi, upar, ut);
+            ParSetIdentifier i=handler->GetIndex(-999.,eta,lumi,upar,ut);
+            GetHistogram(i,"fast_allpt") -> Fill(SET);
+        }
+    }
+
+    void ParameterEstimator::FillStdHist(string base, double set, double pt, double eta, double lumi, double upar, double ut){
+        ParSetIdentifier i = handler -> GetIndex(pt,eta,lumi,upar,ut);
+        double val = 0;
+        switch (handler->dist_type){
+            case SETeff::SET       : val = set    ; break;
+            case SETeff::SEToverPT : val = set/pt ; break;
+        }
+        GetHistogram(i,base)->Fill(val);
+    }
+
+    TH1D * ParameterEstimator::GetHistogram(ParSetIdentifier i, string base_name){
+        TH1D * out =0;
+        string name = get_list_name(i,base_name,"h_");
+        out = (TH1D *) l_hists(name.c_str());
+        if (out == 0) {
+            name.insert(0,"there is no histogram with name '");
+            name.append("'");
+            throw invalid_argument(name);
+        }
+        return out;
+    }
+
+    TF1 * ParameterEstimator::GetFunction(ParSetIdentifier i){
+        TF1 * out =0;
+        string name = get_list_name(i,"","f_");
+        out = (TF1 *) l_hists(name.c_str());
+        if (out == 0) {
+            name.insert(0,"there is no function with name '");
+            name.append("'");
+            throw invalid_argument(name);
+        }
+        return out;
+    }
+
+    string ParameterEstimator::get_list_name(ParSetIdentifier i, string base_name, string out){
+        out.append(base_name);
+        out.append(ToString(i));
+        return out;
     }
 
     void ParameterEstimator::MakeEfficiencies(){
-        for (size_t i_pt   =0; i_pt   < b_pt   -> GetNBins(); i_pt   ++ ){
-        for (size_t i_eta  =0; i_eta  < b_eta  -> GetNBins(); i_eta  ++ ){
-        for (size_t i_lumi =0; i_lumi < b_lumi -> GetNBins(); i_lumi ++ ){
-        for (size_t i_upar =0; i_upar < b_upar -> GetNBins(); i_upar ++ ){
-        for (size_t i_ut   =0; i_ut   < b_ut   -> GetNBins(); i_ut   ++ ){
-
+        for (size_t i_lumi =0; i_lumi < handler -> bins_lumi .GetNBins(); i_lumi ++ ){
+        for (size_t i_upar =0; i_upar < handler -> bins_upar .GetNBins(); i_upar ++ ){
+        for (size_t i_ut   =0; i_ut   < handler -> bins_ut   .GetNBins(); i_ut   ++ ){
+        for (size_t i_pt   =0; i_pt   < handler -> bins_pt   .GetNBins(); i_pt   ++ ){
+        for (size_t i_eta  =0; i_eta  < handler -> bins_eta  .GetNBins(); i_eta  ++ ){
+            ParSetIdentifier i = handler->GetIndex( i_pt   , i_eta  , i_lumi , i_upar , i_ut );
+            TH1D * h_full  = GetHistogram(i,"full"  );
+            TH1D * h_fast  = GetHistogram(i,"fast"  );
+            TH1D * h_ratio = GetHistogram(i,"ratio" );
+            make_scaled_ratio(h_full,h_fast,h_ratio);
         } } } } }
+    }
 
+    void ParameterEstimator::make_scaled_ratio(TH1D* A, TH1D* B, TH1D * C, double scale){
+        scale*= A->Integral() / B->Integral();
+        // ratio bin by bin
+        size_t N_bins = A->GetXaxis()->GetNbins()+1;
+        for (size_t i_bin = 0; i_bin <= N_bins; i_bin++){
+            double ratio = 0;
+            double ratio_error = 0;
+            if ( (B->GetBinContent(i_bin)>0)  && (A->GetBinContent(i_bin)!=0)  ){
+                ratio  = A->GetBinContent(i_bin);
+                ratio /= B->GetBinContent(i_bin);
+                ratio /= scale;
+                ratio_error  = pow( A->GetBinError(i_bin) / A->GetBinContent(i_bin), 2);
+                ratio_error += pow( B->GetBinError(i_bin) / B->GetBinContent(i_bin), 2);
+                ratio_error  = sqrt(ratio_error);
+                ratio_error *= ratio;
+            }
+            C->SetBinContent (i_bin, ratio       );
+            C->SetBinError   (i_bin, ratio_error );
+        }
+    }
+
+    void ParameterEstimator::FitEfficiencies(){
+        float elpt_cut=40.; // increase number of parameters after 40GeV
+        for (size_t i_pt   =0; i_pt   < handler -> bins_pt   . GetNBins(); i_pt   ++ ){
+        for (size_t i_eta  =0; i_eta  < handler -> bins_eta  . GetNBins(); i_eta  ++ ){
+        for (size_t i_lumi =0; i_lumi < handler -> bins_lumi . GetNBins(); i_lumi ++ ){
+        for (size_t i_upar =0; i_upar < handler -> bins_upar . GetNBins(); i_upar ++ ){
+        for (size_t i_ut   =0; i_ut   < handler -> bins_ut   . GetNBins(); i_ut   ++ ){
+            ParSetIdentifier i = handler->GetIndex( i_pt   , i_eta  , i_lumi , i_upar , i_ut );
+            TH1D * h_ratio = GetHistogram(i,"ratio");
+            TF1  * f_fit = GetFunction(i);
+            f_fit->SetParameter(0, 0.);
+            f_fit->SetParameter(1, 0.);
+            f_fit->SetParameter(2, 0.);
+            // fix parameter for lower than elpt_cut
+            if (i_pt < handler->bins_pt.GetBin(elpt_cut)){
+                f_fit->FixParameter(3,0.);
+                f_fit->FixParameter(4,0.);
+            } else {
+                f_fit->SetParameter(3,0.);
+                f_fit->FixParameter(4,0.);
+            }
+            h_ratio->Fit(f_fit);
+            handler->fit_pars.SetParams(f_fit,i);
+        } } } } }
+    }
+
+    void ParameterEstimator::CalculateScales(){
+        for (size_t i_lumi =0; i_lumi < handler -> bins_lumi . GetNBins(); i_lumi ++ ){
+        for (size_t i_upar =0; i_upar < handler -> bins_upar . GetNBins(); i_upar ++ ){
+        for (size_t i_ut   =0; i_ut   < handler -> bins_ut   . GetNBins(); i_ut   ++ ){
+            ParSetIdentifier i_allpt_alleta = handler->GetIndex( 0    , 0     , i_lumi , i_upar , i_ut );
+        for (size_t i_eta  =0; i_eta  < handler -> bins_eta  . GetNBins(); i_eta  ++ ){
+            ParSetIdentifier i_allpt        = handler->GetIndex( 0    , i_eta , i_lumi , i_upar , i_ut );
+        for (size_t i_pt   =0; i_pt   < handler -> bins_pt   . GetNBins(); i_pt   ++ ){
+            ParSetIdentifier i              = handler->GetIndex( i_pt , i_eta , i_lumi , i_upar , i_ut );
+            m_finalScale[i]  = GetHistogram(i,"full"  ) ->Integral();
+            m_finalScale[i] /= ModIntegral(i);
+            m_finalScale[i] /= GlobalNorm(i_allpt);
+            // find maximal scale
+            if (m_finalScaleMax[i_allpt]<m_finalScale[i]) m_finalScaleMax[i_allpt]=m_finalScale[i];
+            // find maximal global scale
+            if ( isOkBins(i_pt, i_eta) && 
+                    m_finalScaleMaxGlobal[i_allpt_alleta] < m_finalScale[i]
+                    ) m_finalScaleMaxGlobal[i_allpt_alleta] = m_finalScale[i];
+        } } } } }
+    }
+
+    bool ParameterEstimator::isOkBins(size_t i_pt, size_t i_eta){
+        if ( i_eta == 1 && i_pt == 7) return false;
+        if ( i_eta == 3 && i_pt == 7) return false;
+        if ( i_eta == 4 && i_pt == 7) return false;
+        if ( i_eta == 1 && i_pt == 0) return false;
+        if ( i_eta == 2 && i_pt == 0) return false;
+        return true;
+    }
+
+
+    double ParameterEstimator::ModIntegral(ParSetIdentifier i){
+        if ( m_modintegral.count(i) == 0){ // if not exist then calculate it
+            TH1D * h_fast = GetHistogram(i,"fast");
+            m_modintegral[i] = 0;
+            for ( Int_t i_bin=0; i_bin <= h_fast->GetXaxis()->GetNbins(); i_bin++){
+                double val    = h_fast->GetBinContent(i_bin);
+                double center = h_fast->GetXaxis()->GetBinCenter(i_bin);
+                m_modintegral[i] += val * GetFunction(i)->Eval(center);
+            }
+        }
+        return m_modintegral[i];
+    }
+
+    double ParameterEstimator::GlobalNorm(ParSetIdentifier i){
+        if ( m_globalnorm.count(i) == 0){ // if not exist then calculate it
+            m_globalnorm[i]  = GetHistogram(i,"full_allpt") ->Integral();
+            m_globalnorm[i] /= GetHistogram(i,"fast_allpt") ->Integral();
+        }
+        return m_globalnorm[i];
     }
 
     void ParameterEstimator::SaveStudy(string outfile){
+        TFile *f = TFile::Open(outfile.c_str(), "RECREATE");
+        TIter next(&l_hists);
+        TObject * obj = 0;
+        while ( (obj = next()) ) obj->Write();
+        f->Write();
+        f->Close();
     }
 
     /// namespace utilities
@@ -481,11 +892,19 @@ namespace SETeff{
     string ToString(const vector<double> &data){
         string out;
         for(vector<double>::const_iterator it=data.begin(); it!=data.end(); ++it){
-            if(it!=data.begin()) out.append(" ");
-            out.append(to_string(*it));
+            if(it!=data.begin()) out.append("  ");
+            out.append(ToString(*it));
         }
         return out;
     }
+
+    string ToString(size_t i) {
+        return to_string(i);
+    };
+
+    string ToString(double a) {
+        return to_string(a);
+    };
 
     void ToLowcase(string & s){
         transform(s.begin(),s.end(),s.begin(),::tolower);
@@ -500,11 +919,11 @@ namespace SETeff{
 
     string GetParNameByIndices( size_t i_pt, size_t i_eta, size_t i_lumi, size_t i_upar, size_t i_ut ){
         string out;
-        out.append("pt"   ); out.append(to_string(i_pt   ));
-        out.append("eta"  ); out.append(to_string(i_eta  ));
-        out.append("lumi" ); out.append(to_string(i_lumi ));
-        out.append("upar" ); out.append(to_string(i_upar ));
-        out.append("ut"   ); out.append(to_string(i_ut   ));
+        out.append("pt"   ); out.append(ToString(i_pt   ));
+        out.append("eta"  ); out.append(ToString(i_eta  ));
+        out.append("lumi" ); out.append(ToString(i_lumi ));
+        out.append("upar" ); out.append(ToString(i_upar ));
+        out.append("ut"   ); out.append(ToString(i_ut   ));
         return out;
     }
 
@@ -535,12 +954,17 @@ namespace SETeff{
     }
 
 
-    void ConvertDumpToTree_fullMC (string text_dump, string root_dump){
-
+    void ConvertDumpToTree_fullMC (string text_dump, string root_dump, bool isPMCS=false){
+        TFile *fout = TFile::Open(root_dump.c_str(),"RECREATE");
+        TTree* tree = new TTree("dump","dump of SET information from fullMC events");
+        if (isPMCS) tree->ReadFile(text_dump.c_str(), "run/I:evt/I:lumi/D:scalaret/D:scalaretZB/D:scalaretMB/D:scalaretHard/D:elepT/D:deteta/D:eta/D:upara/D:ut/D");
+        else tree->ReadFile(text_dump.c_str(), "run/I:evt/I:lumblk/I:lumi/D:scalaret/D:elepT/D:deteta/D:eta/D:upara/D:ut/D");
+        fout->Write();
+        fout->Close();
     }
 
     void ConvertDumpToTree_PMCS   (string text_dump, string root_dump){
-
+       ConvertDumpToTree_fullMC(text_dump, root_dump, true);
     }
 
     double fun_p3_20(double* x, double* par) {
