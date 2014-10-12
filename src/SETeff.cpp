@@ -430,7 +430,7 @@ namespace SETeff{
 
     void EffParams::SetParams(TF1 * fun, ParSetIdentifier i){
         vector<double> vec;
-        for (Int_t j=0; j < fun->GetNpar(); i++) vec.push_back(fun->GetParameter(j));
+        for (Int_t j=0; j < fun->GetNpar(); j++) vec.push_back(fun->GetParameter(j));
         map<ParSetIdentifier,vector<double> >::operator[](i)=vec;
     }
 
