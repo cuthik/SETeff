@@ -33,7 +33,6 @@ using std::map;
 using std::string;
 using std::ifstream;
 using std::ostream;
-using std::to_string;
 
 namespace SETeff {
 
@@ -52,12 +51,13 @@ namespace SETeff {
     string ToString(const vector<double> &data);
     string ToString(size_t i);
     string ToString(double a);
+    double StrinToDouble(string a);
     void ToLowcase(string &s);
     bool StartWithNoCase(string s1,string s2);
     string GetParNameByIndices( size_t i_pt, size_t i_eta, size_t i_lumi, size_t i_upar, size_t i_ut );
     vector<string> SplitString(string &source,bool keepEmpty=false);
     size_t NextWhitespace(string &source, size_t prev);
-    void ConvertDumpToTree_fullMC (string text_dump, string root_dump);
+    void ConvertDumpToTree_fullMC (string text_dump, string root_dump, bool isPMCS=false);
     void ConvertDumpToTree_PMCS   (string text_dump, string root_dump);
 
     // efficiency functions
@@ -225,13 +225,13 @@ namespace SETeff {
             void LoadFullMC (string path);
             void LoadPMCS   (string path);
 
-            virtual void EstimateParameters();
+            void EstimateParameters();
             void SaveStudy(string outfile);
 
             void OldOutput(ostream &os);
 
-            bool UseFullSET = true;
-            bool UsePhysEta = false;
+            bool UseFullSET;
+            bool UsePhysEta;
 
         protected :
             // parent

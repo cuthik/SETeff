@@ -21,12 +21,20 @@
 // STL
 #include <stdexcept>
 #include <ctime>
+#ifdef NoC11
+#include <cstdio>
+#include <cstdlib>
+#include <cmath>
+#endif
 
 using std::runtime_error;
 using std::invalid_argument;
-using std::stod;
 using std::transform;
 using std::ofstream;
+#ifndef NoC11
+using std::to_string;
+using std::stod;
+#endif
 
 namespace SETeff{
 
@@ -52,7 +60,7 @@ namespace SETeff{
     void EffHandler::SaveConfig(string filepath) {
         time_t now = time(0);
         ofstream outf;
-        outf.open(filepath);
+        outf.open(filepath.c_str());
         outf << "# This file has been generated automatically " ;
         outf << ctime(&now) << "\n";
         //f << (ConfigFile) *this;
@@ -350,7 +358,7 @@ namespace SETeff{
         find_config(name);
         // parse string to vector of doubles
         for(vector<string>::iterator it=data.begin()+1; it!=data.end(); ++it){
-            out.push_back(stod(*it));
+            out.push_back(StrinToDouble(*it));
         }
         return out;
     }
@@ -422,7 +430,7 @@ namespace SETeff{
 
     void EffParams::SetParams(TF1 * fun, ParSetIdentifier i){
         vector<double> vec;
-        for (Int_t i=0; i < fun->GetNpar(); i++) vec.push_back(fun->GetParameter(i));
+        for (Int_t j=0; j < fun->GetNpar(); i++) vec.push_back(fun->GetParameter(j));
         map<ParSetIdentifier,vector<double> >::operator[](i)=vec;
     }
 
@@ -438,7 +446,7 @@ namespace SETeff{
 
     double * EffParams::GetParArray(ParSetIdentifier i){
         test_key(i);
-        return (double*) & (at(i)[0]);
+        return (double*) & (operator[](i)[0]);
     }
 
     double * EffParams::GetParArray(size_t i_pt, size_t i_eta, size_t i_lumi, size_t i_upar, size_t i_ut){
@@ -451,7 +459,7 @@ namespace SETeff{
 
     vector<double> EffParams::GetParVec(ParSetIdentifier i) const{
         test_key(i);
-        return at(i);
+        return find(i)->second;
     }
 
     vector<double> EffParams::GetParVec(size_t i_pt, size_t i_eta, size_t i_lumi, size_t i_upar, size_t i_ut) const{
@@ -530,7 +538,10 @@ namespace SETeff{
 
     /// Parameter Estimator
 
-    ParameterEstimator::ParameterEstimator() {
+    ParameterEstimator::ParameterEstimator() :
+            UseFullSET (true  ),
+            UsePhysEta (false )
+    {
     }
 
     ParameterEstimator::~ParameterEstimator() {
@@ -899,12 +910,33 @@ namespace SETeff{
     }
 
     string ToString(size_t i) {
+#ifdef NoC11
+        char buffer[50];
+        sprintf(buffer, "%d",i);
+        return string(buffer);
+#else
         return to_string(i);
+#endif
     };
 
     string ToString(double a) {
+#ifdef NoC11
+        char buffer[50];
+        sprintf(buffer, "%f",a);
+        return string(buffer);
+#else
         return to_string(a);
+#endif
     };
+
+    double StrinToDouble(string a){
+#ifdef NoC11
+        return atof(a.c_str());
+#else
+        return stod(a);
+#endif
+
+    }
 
     void ToLowcase(string & s){
         transform(s.begin(),s.end(),s.begin(),::tolower);
@@ -954,7 +986,7 @@ namespace SETeff{
     }
 
 
-    void ConvertDumpToTree_fullMC (string text_dump, string root_dump, bool isPMCS=false){
+    void ConvertDumpToTree_fullMC (string text_dump, string root_dump, bool isPMCS){
         TFile *fout = TFile::Open(root_dump.c_str(),"RECREATE");
         TTree* tree = new TTree("dump","dump of SET information from fullMC events");
         if (isPMCS) tree->ReadFile(text_dump.c_str(), "run/I:evt/I:lumi/D:scalaret/D:scalaretZB/D:scalaretMB/D:scalaretHard/D:elepT/D:deteta/D:eta/D:upara/D:ut/D");

@@ -46,6 +46,9 @@ void test_estimate_parameters(){
     //SETeff::ConvertDumpToTree_fullMC ("data/Dump_fullMC.txt" , "data/Dump_fullMC.root" );
     //SETeff::ConvertDumpToTree_PMCS   ("data/Dump_PMCS.txt"   , "data/Dump_PMCS.root"   );
 
+    //SETeff::ConvertDumpToTree_fullMC ( "/prj_root/7011/wmass1/stark/RunIIcAnal/CAFprodJan2014/cabout/Results__MCWenu_RunIIb3_gamVeto_Dump/Dump.txt"                        , "data/Dump_fullMC.root" );
+    //SETeff::ConvertDumpToTree_PMCS   ( "../fromJan/Dump__MCwenu_PMCS09_IIb3_gamVeto_newSETeffC2_upslM001_upAdj2Int_noSETeff_Dump_WMass_pythia_wenu_6409ta_v1_snap_002_4822989.txt" , "data/Dump_PMCS.root"   );
+
     SETeff::EffHandler eff;
     try {
         //eff.LoadConfig("data/config_example.txt");
@@ -57,8 +60,10 @@ void test_estimate_parameters(){
         eff.SetMissingParamsToOne();
     }
 
+    //eff.LoadZBlib  ("data/ZBlib.root");
+
     cout << "load zb" << endl;
-    eff.LoadZBlib  ("data/ZBlib.root");
+    eff.LoadZBlib  ("/prj_root/7011/wmass1/stark/RunIIcAnal/PMCS02/mitraillette/make_extras/extras/jenny/MC/MBZBLibrary/Lib_RunIIb3_21Msinglenu_killcell_dq.root");
     cout << "load full" << endl;
     eff.LoadFullMC ("data/Dump_fullMC.root");
     cout << "load fast" << endl;

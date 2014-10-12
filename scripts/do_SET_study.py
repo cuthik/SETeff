@@ -15,6 +15,7 @@ sys.argv.append("-b")
 from ROOT import gROOT
 
 # init SETeff
+gROOT.ProcessLine(".L src/ZBLibraryClass.h++")
 gROOT.ProcessLine(".L src/SETeff.h++")
 from ROOT import SETeff
 
@@ -63,7 +64,7 @@ class SETeff_study :
     # private
     def bin_array(s, Nbins=0, low="-Inf", high=0.) :
         # no bins -- overf and underf are at bin 0
-        if Nbins==0 or : return np.array([],'d')
+        if Nbins==0 : return np.array([],'d')
         # one bin is underflow, second is overflow
         if Nbins==1 : return  np.array([low],'d')
         # n bins is first=underf,bins, overflow
@@ -88,12 +89,17 @@ def config_example(study):
 
 
 def test():
-    st = SETeff_study()
-    print st.bins_SET
-    st.LoadConfig("data/config_example.txt")
-    print st.bins_SET
-    config_example(st)
-    st.SaveConfig("data/config_write_test.txt")
+    s = SETeff.Handler()
+    s.LoadConfig("data/config_testJan.txt")
+
+    s.ReadZBLibrary ("/prj_root/7011/wmass1/stark/RunIIcAnal/PMCS02/mitraillette/make_extras/extras/jenny/MC/MBZBLibrary/Lib_RunIIb3_21Msinglenu_killcell_dq.root");
+    s.ReadFullMC    ("/prj_root/7011/wmass1/stark/RunIIcAnal/CAFprodJan2014/cabout/Results__MCWenu_RunIIb3_gamVeto_Dump/Dump.txt");
+    s.ReadPMCS      ("../Dump__MCwenu_PMCS09_IIb3_gamVeto_newSETeffC2_upslM001_upAdj2Int_noSETeff_Dump_WMass_pythia_wenu_6409ta_v1_snap_002_4822989.txt");
+
+    s.EstimateParameters();
+
+    s.SaveConfig("data/config_test.txt")
+    s.SaveStudy("data/eff_study.txt")
     pass
 
 

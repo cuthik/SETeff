@@ -3,8 +3,11 @@
 ROOTFLAGS=$(shell root-config --cflags)
 ROOTLIBS=$(shell root-config --glibs)
 
+#STD11=-std=c++11
+STD11=-DNoC11
 
-CC=g++ -Wall -ggdb -Isrc -std=c++11 ${ROOTFLAGS}
+
+CC=g++ -Wall -ggdb -Isrc ${STD11} ${ROOTFLAGS}
 
 all: scripts/runtest
 
@@ -30,3 +33,5 @@ test: scripts/runtest
 clean:
 	rm -rf obj
 	rm scripts/runtest
+
+
