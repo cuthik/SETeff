@@ -488,26 +488,33 @@ namespace SETeff{
 
     /// Dump Tree
     TreeDump::TreeDump() : 
-            run          (0),
-            evt          (0),
-            lumblk       (0),
-            lumi         (0),
-            scalaret     (0),
-            scalaretZB   (0),
-            scalaretMB   (0),
-            scalaretHard (0),
-            elepT        (0),
-            deteta       (0),
-            eta          (0),
-            upara        (0),
-            ut           (0)
-    {};
+            IsPMCS       (0)
+    {
+        ClearVars();
+    };
+
+    void TreeDump::ClearVars(){
+            run          = - 999 ;
+            evt          = - 999 ;
+            lumblk       = - 999 ;
+            lumi         = - 999.;
+            scalaret     = - 999.;
+            scalaretZB   = - 999.;
+            scalaretMB   = - 999.;
+            scalaretHard = - 999.;
+            elepT        = - 999.;
+            deteta       = - 999.;
+            eta          = - 999.;
+            upara        = - 999.;
+            ut           = - 999.;
+    }
 
     TreeDump::~TreeDump(){
         if (f!=0 && f->IsOpen()) f->Close();
     };
 
-    void TreeDump::LoadTree(string path, bool isPMCS){
+    void TreeDump::LoadTree(string path, bool _isPMCS){
+        IsPMCS=_isPMCS;
         f = TFile::Open (path.c_str(), "READ");
         if (f==0) throw runtime_error(path.insert(0,"Can not open file ").c_str());
         t = (TTree *) f->Get("dump");
@@ -515,17 +522,47 @@ namespace SETeff{
         // load according to type of dump
         if ( true    ) t->SetBranchAddress ( "run"          , &run          );
         if ( true    ) t->SetBranchAddress ( "evt"          , &evt          );
-        if ( !isPMCS ) t->SetBranchAddress ( "lumblk"       , &lumblk       );
+        if ( !IsPMCS ) t->SetBranchAddress ( "lumblk"       , &lumblk       );
         if ( true    ) t->SetBranchAddress ( "lumi"         , &lumi         );
         if ( true    ) t->SetBranchAddress ( "scalaret"     , &scalaret     );
-        if ( isPMCS  ) t->SetBranchAddress ( "scalaretZB"   , &scalaretZB   );
-        if ( isPMCS  ) t->SetBranchAddress ( "scalaretMB"   , &scalaretMB   );
-        if ( isPMCS  ) t->SetBranchAddress ( "scalaretHard" , &scalaretHard );
+        if ( IsPMCS  ) t->SetBranchAddress ( "scalaretZB"   , &scalaretZB   );
+        if ( IsPMCS  ) t->SetBranchAddress ( "scalaretMB"   , &scalaretMB   );
+        if ( IsPMCS  ) t->SetBranchAddress ( "scalaretHard" , &scalaretHard );
         if ( true    ) t->SetBranchAddress ( "elepT"        , &elepT        );
         if ( true    ) t->SetBranchAddress ( "deteta"       , &deteta       );
         if ( true    ) t->SetBranchAddress ( "eta"          , &eta          );
         if ( true    ) t->SetBranchAddress ( "upara"        , &upara        );
         if ( true    ) t->SetBranchAddress ( "ut"           , &ut           );
+    }
+
+    void TreeDump::NewTree(string filepath, bool _isPMCS){
+        IsPMCS=_isPMCS;
+        f = TFile::Open(filepath.c_str(), "RECREATE");
+        t = new TTree ("dump", "Dump tree for SET eff.");
+        // register branches
+        if ( true    ) t->Branch ( "run"          , &run          , "run/I"          );
+        if ( true    ) t->Branch ( "evt"          , &evt          , "evt/I"          );
+        if ( !IsPMCS ) t->Branch ( "lumblk"       , &lumblk       , "lumblk/I"       );
+        if ( true    ) t->Branch ( "lumi"         , &lumi         , "lumi/D"         );
+        if ( true    ) t->Branch ( "scalaret"     , &scalaret     , "scalaret/D"     );
+        if ( IsPMCS  ) t->Branch ( "scalaretZB"   , &scalaretZB   , "scalaretZB/D"   );
+        if ( IsPMCS  ) t->Branch ( "scalaretMB"   , &scalaretMB   , "scalaretMB/D"   );
+        if ( IsPMCS  ) t->Branch ( "scalaretHard" , &scalaretHard , "scalaretHard/D" );
+        if ( true    ) t->Branch ( "elepT"        , &elepT        , "elepT/D"        );
+        if ( true    ) t->Branch ( "deteta"       , &deteta       , "deteta/D"       );
+        if ( true    ) t->Branch ( "eta"          , &eta          , "eta/D"          );
+        if ( true    ) t->Branch ( "upara"        , &upara        , "upara/D"        );
+        if ( true    ) t->Branch ( "ut"           , &ut           , "ut/D"           );
+    }
+
+    void TreeDump::Fill(){
+        t->Fill();
+    }
+
+    void TreeDump::Write(){
+        f->cd();
+        t->Write();
+        f->Write();
     }
 
     Long64_t TreeDump::GetEntries() const {
@@ -727,7 +764,31 @@ namespace SETeff{
 
     string ParameterEstimator::get_list_name(ParSetIdentifier i, string base_name, string out){
         out.append(base_name);
-        out.append(ToString(i));
+        out.append("_");
+        // by bin indices
+        size_t i_pt   =0;
+        size_t i_eta  =0;
+        size_t i_lumi =0;
+        size_t i_upar =0;
+        size_t i_ut   =0;
+        handler->GetIndices(i,
+                i_pt   ,
+                i_eta  ,
+                i_lumi ,
+                i_upar ,
+                i_ut   
+                );
+        out.append(
+                GetParNameByIndices(
+                    i_pt   ,
+                    i_eta  ,
+                    i_lumi ,
+                    i_upar ,
+                    i_ut   
+                    )
+                );
+        // by par identifier
+        //out.append(ToString(i));
         return out;
     }
 

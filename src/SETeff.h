@@ -193,8 +193,12 @@ namespace SETeff {
             ~TreeDump();
 
             void LoadTree(string path, bool isPMCS=false);
+            void NewTree(string filepath, bool _isPMCS=false);
             Long64_t GetEntries() const;
             void GetEntry(Long64_t i);
+            void Fill();
+            void ClearVars();
+            void Write();
 
             int    run          ;
             int    evt          ;
@@ -209,6 +213,8 @@ namespace SETeff {
             double eta          ;
             double upara        ;
             double ut           ;
+
+            bool IsPMCS;
 
         private :
             TFile *f;
