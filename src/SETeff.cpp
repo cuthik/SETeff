@@ -50,9 +50,14 @@ namespace SETeff{
             default : val = SET;
         }
         switch(fun_type){
-            case SETeff::p3_20  : return fun_p3_20  (&val,params);
             case SETeff::p5_200 : return fun_p5_200 (&val,params);
+            case SETeff::p2_20  : return fun_p2_20  (&val,params);
+            case SETeff::p3_20  : return fun_p3_20  (&val,params);
+            case SETeff::p4_20  : return fun_p4_20  (&val,params);
             case SETeff::p5_20  : return fun_p5_20  (&val,params);
+            case SETeff::c3     : return fun_c3     (&val,params);
+            case SETeff::c4     : return fun_c4     (&val,params);
+            case SETeff::c5     : return fun_c5     (&val,params);
         }
         return 1;
     }
@@ -62,8 +67,10 @@ namespace SETeff{
         ofstream outf;
         outf.open(filepath.c_str());
         outf << "# This file has been generated automatically " ;
-        outf << ctime(&now) << "\n";
-        //f << (ConfigFile) *this;
+        outf << ctime(&now) << "\n\n";
+        //f << &(ConfigFile) *this;
+        //operator<< (outf,*this);
+        outf << *this;
         outf.close();
     }
 
@@ -281,7 +288,7 @@ namespace SETeff{
         config_bins ("elpt"     , &bins_pt        );
         config_bins ("eleta"    , &bins_eta       );
         config_bins ("lumi"     , &bins_lumi      );
-        config_bins ("upara"    , &bins_upar      );
+        config_bins ("upar"      , &bins_upar      );
         config_bins ("ut"       , &bins_ut        );
         // load parameter values
         config_fit_pars();
@@ -299,9 +306,14 @@ namespace SETeff{
 
     void ConfigFile::config_fit_fun(){
         string s_data = GetString("fit_fun");
-        if      (s_data.compare("p3_20"  ) == 0) fun_type=SETeff::p3_20  ;
-        else if (s_data.compare("p5_200" ) == 0) fun_type=SETeff::p5_200 ;
+        if      (s_data.compare("p5_200" ) == 0) fun_type=SETeff::p5_200 ;
+        else if (s_data.compare("p2_20"  ) == 0) fun_type=SETeff::p2_20  ;
+        else if (s_data.compare("p3_20"  ) == 0) fun_type=SETeff::p3_20  ;
+        else if (s_data.compare("p4_20"  ) == 0) fun_type=SETeff::p4_20  ;
         else if (s_data.compare("p5_20"  ) == 0) fun_type=SETeff::p5_20  ;
+        else if (s_data.compare("c3"     ) == 0) fun_type=SETeff::c3     ;
+        else if (s_data.compare("c4"     ) == 0) fun_type=SETeff::c4     ;
+        else if (s_data.compare("c5"     ) == 0) fun_type=SETeff::c5     ;
         else {
             s_data.insert(0,"Unknown function type: '");
             s_data.append("'");
@@ -670,9 +682,14 @@ namespace SETeff{
         string name = get_list_name(i,"","f_");
         TF1 * fcn = 0;
         switch (handler->fun_type){
-            case SETeff::p3_20  : fcn = new TF1( name.c_str(), SETeff::fun_p3_20  , 0, 250, 3 ) ; break ;
-            case SETeff::p5_200 : fcn = new TF1( name.c_str(), SETeff::fun_p5_200 , 0, 250, 5 ) ; break ;
-            case SETeff::p5_20  : fcn = new TF1( name.c_str(), SETeff::fun_p5_20  , 0, 250, 5 ) ; break ;
+            case SETeff::p5_200 : fcn = new TF1( name.c_str(), SETeff::fun_p5_200 , 0, 250, 6 ) ; break ;
+            case SETeff::p2_20  : fcn = new TF1( name.c_str(), SETeff::fun_p2_20  , 0, 250, 2 ) ; break ;
+            case SETeff::p3_20  : fcn = new TF1( name.c_str(), SETeff::fun_p3_20  , 0, 250, 4 ) ; break ;
+            case SETeff::p4_20  : fcn = new TF1( name.c_str(), SETeff::fun_p4_20  , 0, 250, 5 ) ; break ;
+            case SETeff::p5_20  : fcn = new TF1( name.c_str(), SETeff::fun_p5_20  , 0, 250, 6 ) ; break ;
+            case SETeff::c3     : fcn = new TF1( name.c_str(), SETeff::fun_c3     , 0, 20., 4 ) ; break ;
+            case SETeff::c4     : fcn = new TF1( name.c_str(), SETeff::fun_c4     , 0, 20., 5 ) ; break ;
+            case SETeff::c5     : fcn = new TF1( name.c_str(), SETeff::fun_c5     , 0, 20., 6 ) ; break ;
         }
         l_hists.Add( fcn );
     }
@@ -688,7 +705,7 @@ namespace SETeff{
         for (Long64_t i_entry=0; i_entry < t_fullMC.GetEntries(); i_entry++){
             t_fullMC.GetEntry(i_entry);
             if (UseFullSET) SET  = t_fullMC.scalaret ;
-            else {
+            else { // ZB study
                 EventIdentifier evID(t_fullMC.run, t_fullMC.evt);
                 ZBmap::iterator it=m_zblib.find(evID);
                 if (it==m_zblib.end()) throw runtime_error("not in library!");
@@ -702,7 +719,7 @@ namespace SETeff{
             upar = t_fullMC.upara    ;
             ut   = t_fullMC.ut       ;
             FillStdHist("full", SET, pt, eta, lumi, upar, ut);
-            ParSetIdentifier i=handler->GetIndex(-999.,eta,lumi,upar,ut);
+            ParSetIdentifier i=handler->GetIndex(-999.,eta,lumi,upar,ut); // for first pt-bin
             GetHistogram(i,"full_allpt") -> Fill(SET);
         }
         /// loop PMCS
@@ -829,6 +846,8 @@ namespace SETeff{
 
     void ParameterEstimator::FitEfficiencies(){
         float elpt_cut=40.; // increase number of parameters after 40GeV
+        bool doElPtFix = false && (handler-> fun_type = SETeff::p5_20); // from Jan
+        // loop over all
         for (size_t i_pt   =0; i_pt   < handler -> bins_pt   . GetNBins(); i_pt   ++ ){
         for (size_t i_eta  =0; i_eta  < handler -> bins_eta  . GetNBins(); i_eta  ++ ){
         for (size_t i_lumi =0; i_lumi < handler -> bins_lumi . GetNBins(); i_lumi ++ ){
@@ -837,16 +856,20 @@ namespace SETeff{
             ParSetIdentifier i = handler->GetIndex( i_pt   , i_eta  , i_lumi , i_upar , i_ut );
             TH1D * h_ratio = GetHistogram(i,"ratio");
             TF1  * f_fit = GetFunction(i);
-            f_fit->SetParameter(0, 0.);
-            f_fit->SetParameter(1, 0.);
-            f_fit->SetParameter(2, 0.);
             // fix parameter for lower than elpt_cut
-            if (i_pt < handler->bins_pt.GetBin(elpt_cut)){
-                f_fit->FixParameter(3,0.);
-                f_fit->FixParameter(4,0.);
+            if (doElPtFix) {
+                f_fit->SetParameter(0, 0.);
+                f_fit->SetParameter(1, 0.);
+                f_fit->SetParameter(2, 0.);
+                if(i_pt < handler->bins_pt.GetBin(elpt_cut)){
+                    f_fit->FixParameter(3,0.);
+                    f_fit->FixParameter(4,0.);
+                } else {
+                    f_fit->SetParameter(3,0.);
+                    f_fit->FixParameter(4,0.);
+                }
             } else {
-                f_fit->SetParameter(3,0.);
-                f_fit->FixParameter(4,0.);
+                for(Int_t i = 0; i<f_fit->GetNpar(); i++) { f_fit->SetParameter(i,0.); }
             }
             h_ratio->Fit(f_fit);
             handler->fit_pars.SetParams(f_fit,i);
@@ -854,6 +877,7 @@ namespace SETeff{
     }
 
     void ParameterEstimator::CalculateScales(){
+        bool doElEtaFix = false; // from Jan
         for (size_t i_lumi =0; i_lumi < handler -> bins_lumi . GetNBins(); i_lumi ++ ){
         for (size_t i_upar =0; i_upar < handler -> bins_upar . GetNBins(); i_upar ++ ){
         for (size_t i_ut   =0; i_ut   < handler -> bins_ut   . GetNBins(); i_ut   ++ ){
@@ -868,9 +892,13 @@ namespace SETeff{
             // find maximal scale
             if (m_finalScaleMax[i_allpt]<m_finalScale[i]) m_finalScaleMax[i_allpt]=m_finalScale[i];
             // find maximal global scale
-            if ( isOkBins(i_pt, i_eta) && 
+            if ( doElEtaFix) {
+                if ( isOkBins(i_pt, i_eta) && 
                     m_finalScaleMaxGlobal[i_allpt_alleta] < m_finalScale[i]
                     ) m_finalScaleMaxGlobal[i_allpt_alleta] = m_finalScale[i];
+            } else {
+                if ( m_finalScaleMaxGlobal[i_allpt_alleta] < m_finalScale[i]) m_finalScaleMaxGlobal[i_allpt_alleta] = m_finalScale[i];
+            }
         } } } } }
     }
 
@@ -946,9 +974,14 @@ namespace SETeff{
 
     string ToString(EffFunType in){
         switch (in){
-            case p3_20  : return string("p3_20"  ); break;
             case p5_200 : return string("p5_200" ); break;
+            case p2_20  : return string("p2_20"  ); break;
+            case p3_20  : return string("p3_20"  ); break;
+            case p4_20  : return string("p4_20"  ); break;
             case p5_20  : return string("p5_20"  ); break;
+            case c3     : return string("c3"     ); break;
+            case c4     : return string("c4"     ); break;
+            case c5     : return string("c5"     ); break;
         }
         return string("");
     }
@@ -1060,7 +1093,80 @@ namespace SETeff{
        ConvertDumpToTree_fullMC(text_dump, root_dump, true);
     }
 
+
+    /// fitting functions
+
+    double fun_cheby (const double * xx, const double *p, int n, double min, double max) {
+        double fT[10];
+        int order = n;
+        //vector<double> fT (n,1.);
+        //int order = fT.size(); 
+
+        double x = (xx[0] - min - max)/(max-min);
+        if (order == 1) return p[0]; 
+        if (order == 2) return p[0] + x*p[1]; 
+        // build the polynomials
+        fT[0] = 1;
+        fT[1] = x; 
+        for (int i = 1; i< order; ++i) { 
+            fT[i+1] =  2 *x * fT[i] - fT[i-1]; 
+        }
+        double sum = p[0]*fT[0]; 
+        for (int i = 1; i<= order; ++i) { 
+            sum += p[i] * fT[i]; 
+        }
+        //fT.clear();
+        return sum;
+    }
+
+    class Chebyshev {
+        public: 
+            Chebyshev(int n, double xmin, double xmax) : 
+                fA(xmin), fB(xmax),
+                fT(std::vector<double>(n) )  {}
+
+            double operator() (const double * xx, const double *p) { 
+                double x = (xx[0] - fA -fB)/(fB-fA);
+                int order = fT.size(); 
+                if (order == 1) return p[0]; 
+                if (order == 2) return p[0] + x*p[1]; 
+                // build the polynomials
+                fT[0] = 1;
+                fT[1] = x; 
+                for (int i = 1; i< order; ++i) { 
+                    fT[i+1] =  2 *x * fT[i] - fT[i-1]; 
+                }
+                double sum = p[0]*fT[0]; 
+                for (int i = 1; i<= order; ++i) { 
+                    sum += p[i] * fT[i]; 
+                }
+                return sum; 
+            }
+
+        private: 
+            double fA; 
+            double fB; 
+            std::vector<double> fT; // polynomial
+            std::vector<double> fC; // coefficients
+    };
+
+    double  fun_polyscales(double* x, double* par, size_t N=2, double K=1){
+        double xi=x[0]/K;
+        double res= par[0];
+        for (size_t i = 0; i < N; i++){
+            res += par[i+1]*xi;
+            xi*=x[0]/K;
+        }
+        return res;
+    }
+
+    double fun_p2_20(double* x, double* par) {
+        return fun_polyscales(x,par, 2, 20);
+    }
+
     double fun_p3_20(double* x, double* par) {
+        return fun_polyscales(x,par, 3, 20);
+        // old style
         double xi=x[0]/20.;
         double res=
             1.+
@@ -1072,28 +1178,27 @@ namespace SETeff{
 
 
     double fun_p5_200(double* x, double* par) {
-        double xi=x[0]/200.;
-        double res=
-            1.+
-            par[0]*xi+
-            par[1]*xi*xi+
-            par[2]*xi*xi*xi+
-            par[3]*xi*xi*xi*xi+
-            par[4]*xi*xi*xi*xi*xi;
-        return res;
+        return fun_polyscales(x,par,5,200);
     }
 
+    double fun_p4_20(double* x, double* par) {
+        return fun_polyscales(x,par,4,20);
+    }
 
     double fun_p5_20(double* x, double* par) {
-        double xi=x[0]/20.;
-        double res=
-            1.+
-            par[0]*xi+
-            par[1]*xi*xi+
-            par[2]*xi*xi*xi+
-            par[3]*xi*xi*xi*xi+
-            par[4]*xi*xi*xi*xi*xi;
-        return res;
+        return fun_polyscales(x,par,5,20);
+    }
+
+    double fun_c3(double* x, double* par){
+        //Chebyshev c (3,0.,20.);
+        //return c(x,par);
+        return fun_cheby(x,par,3.,0.,20.);
+    }
+    double fun_c4(double* x, double* par){
+        return fun_cheby(x,par,4.,0.,20.);
+    }
+    double fun_c5(double* x, double* par){
+        return fun_cheby(x,par,5.,0.,20.);
     }
 
 }

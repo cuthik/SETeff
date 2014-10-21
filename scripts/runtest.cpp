@@ -78,6 +78,10 @@ void test_estimate_parameters(){
     cout << "old dump" << endl;
     eff.OldOutput(cout);
     cout << endl;
+    cout << "new dump" << endl;
+    cout << eff;
+    cout << endl;
+
 }
 
 /**

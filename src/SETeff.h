@@ -36,7 +36,7 @@ using std::ostream;
 
 namespace SETeff {
 
-    enum EffFunType { p3_20, p5_200, p5_20}; ///< Fitting function switch.
+    enum EffFunType { p3_20, p5_200, p2_20, p4_20, p5_20, c3, c4, c5 }; ///< Fitting function switch.
     enum EffDist { SET, SEToverPT }; ///< Fitting distribution switch.
 
     // typedefs
@@ -61,9 +61,14 @@ namespace SETeff {
     void ConvertDumpToTree_PMCS   (string text_dump, string root_dump);
 
     // efficiency functions
-    double fun_p3_20  ( double* x, double* par);
     double fun_p5_200 ( double* x, double* par);
+    double fun_p2_20  ( double* x, double* par);
+    double fun_p3_20  ( double* x, double* par);
+    double fun_p4_20  ( double* x, double* par);
     double fun_p5_20  ( double* x, double* par);
+    double fun_c3     ( double* x, double* par);
+    double fun_c4     ( double* x, double* par);
+    double fun_c5     ( double* x, double* par);
 
     // classes
     class EffHandler;
